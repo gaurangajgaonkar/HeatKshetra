@@ -1,0 +1,9 @@
+ward_id,ward_name,elderly_pct,outdoor_worker_pct,informal_housing_pct,comorbidity_proxy
+W01,Ward 1,8,18,12,10
+W02,Ward 2,11,25,20,15
+W03,Ward 3,7,32,28,18
+W04,Ward 4,14,20,15,20
+W05,Ward 5,10,38,35,22
+W06,Ward 6,16,30,25,24
+W07,Ward 7,18,42,40,28
+W08,Ward 8,6,15,10,8
