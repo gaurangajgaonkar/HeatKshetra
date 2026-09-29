@@ -1,0 +1,31 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local secrets and databases
+.env
+.env.*
+!.env.example
+*.db
+*.sqlite
+*.sqlite3
+*firebase-adminsdk*.json
+firebase-service-account*.json
+service-account*.json
+
+# Frontend/build artifacts
+node_modules/
+dist/
+build/
+.tanstack/
+
+# Editors and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
