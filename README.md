@@ -1,165 +1,219 @@
 # HeatKshetra
 
-HeatKshetra is a Smart India Hackathon prototype for ward-level heat-health risk in Mumbai. The React/Leaflet dashboard, FastAPI service, and SQLite database run as one local application. On startup, the API imports the 24 ward boundaries, calculates population estimates from the checked-in census data, and fetches live current conditions and a five-day forecast from Open-Meteo.
+**Ward-level heat-risk monitoring for Mumbai, with a design intended to scale across India.**
 
-## Data and model status
+HeatKshetra is a Smart India Hackathon prototype for Problem Statement 83. It brings live weather, ward boundaries, population and vulnerability inputs, heat-risk calculations, a GIS dashboard, advisories, and opt-in alerts into one system.
 
-- Weather comes from Open-Meteo and refreshes every 30 minutes by default. The current temperature is a gridded weather-model estimate for each ward centroid, not a local sensor reading. If weather is unavailable, the dashboard shows an unavailable message rather than substituting invented readings.
-- The source GeoJSON is `app/data/MUMBAI.geojson`, downloaded from [datta07/INDIAN-SHAPEFILES](https://github.com/datta07/INDIAN-SHAPEFILES). It provides 24 canonical Mumbai ward polygons. The source repository describes its data as primarily from 2019; verify boundaries against current MCGM data before operational use.
-- `app/data/wards_demographics.csv` currently contains eight generic example profiles. The importer maps them in listed order to the first eight canonical wards and uses the CSV column medians as placeholder values for the remaining wards. All records are marked as placeholders; these are not official ward-level demographics and must not be presented as such.
-- `app/data/ward_population_census.csv` contains the ward census population input; `app/data/greater_mumbai_census_totals.csv` contains the city totals used to calculate CAGR. The app derives the annual rate from the latest two census years available, then projects each ward's latest available census population to the current year. Current bundled ward figures are labelled low or medium confidence estimates.
-- Formula: `CAGR = (latest city census population / previous city census population)^(1 / years between censuses) - 1`. With the bundled totals (11,978,450 in 2001; 12,442,373 in 2011), the annual rate is 0.3807%. Ward projection is `ward census population * (1 + CAGR)^(target year - ward census year)`, rounded to a whole person.
-- When official 2027 Census ward populations are published, add one row per ward with `census_year=2027`, the official count, and `confidence=official`. Add the official Greater Mumbai total for 2027 to the city totals CSV. The running API re-reads these CSVs on its scheduled refresh (every 30 minutes by default); restarting the API also applies them. Matching official ward counts are used directly, while wards without an official row remain projected and are labelled as such.
-- The illustrative excess-death estimate uses a 7-per-1,000 annual crude-death-rate proxy and the project's heat-risk index. It is not an observed death count or a validated mortality forecast.
-- The MRI curve and vulnerability formula are deterministic demonstration assumptions, not a trained model or clinically validated mortality probabilities. The 0–100 map score is a visual mapping of MRI bands, not a probability.
-- Simplified WBGT is only an estimate from limited weather inputs; it is not measured WBGT and does not use measured globe temperature.
-- Consent-based SMS/WhatsApp alerts can be sent through Twilio from the dashboard. Live delivery requires server credentials and an authenticated administrator action.
+## Problem statement
 
-## Start HeatKshetra on Windows
+Heat warnings often focus on air temperature. But the heat a person experiences also depends on humidity, wind, solar exposure, and personal or neighbourhood vulnerability. A temperature threshold alone cannot show which wards may face greater heat stress or where timely precautions may matter most.
 
-Run the backend and frontend in **two separate PowerShell windows**. In both windows, first go to the project folder. If you saved it on your Desktop as `sih2026`, run:
+The challenge is to turn weather information into localized, actionable heat-risk guidance, with ward-level mapping, short-range forecasts, public advisories, and alert delivery.
+
+## Proposed solution
+
+HeatKshetra connects data, risk calculations, maps, and alerts:
+
+1. **Bring together local inputs:** Open-Meteo weather and forecasts, Mumbai ward boundaries, census-based population inputs, and ward vulnerability profiles.
+2. **Calculate heat-stress indicators:** Compute Heat Index and a simplified WBGT estimate from available weather inputs.
+3. **Estimate a ward-level Mortality Risk Index (MRI):** Combine a temperature-relative-risk curve with weighted vulnerability factors.
+4. **Show a five-day ward heat-risk forecast:** Apply forecast weather to ward risk calculations and present the results on a colour-coded GIS map.
+5. **Turn risk into guidance:** Display public advisories and heat-action suggestions for the selected risk level.
+6. **Deliver opt-in alerts:** Support SMS/WhatsApp through Twilio and browser push through Firebase Cloud Messaging, with delivery activity recorded in SQLite.
+7. **Project population as census data changes:** Calculate Greater Mumbai’s CAGR from the latest two available city totals and apply it to ward census inputs. New official census rows can be added and picked up on refresh.
+
+### How the MRI is calculated
+
+The prototype calculates:
+
+`MRI = Temperature Relative Risk × Vulnerability Index`
+
+The vulnerability index weights elderly population (30%), outdoor workers (30%), informal housing (20%), and a comorbidity proxy (20%). The result is an **estimated risk score**, not a predicted death count or an individual probability.
+
+## Unique value propositions
+
+- **Weather translated into human heat risk:** Combines Heat Index and simplified WBGT with a transparent, vulnerability-weighted MRI rather than relying on air temperature alone.
+- **Census-aware population estimates:** Uses Greater Mumbai census growth to update ward population projections, and can recalculate when newer official census figures are added.
+- **Ward-level view linked to action:** Connects colour-coded ward risk, five-day heat-risk forecasts, advisories, and opt-in alert delivery in one workflow.
+
+## What the current prototype demonstrates
+
+- A live-weather dashboard backed by Open-Meteo.
+- A Mumbai ward map using GeoJSON boundaries and OpenStreetMap tiles.
+- Heat Index, simplified WBGT, vulnerability inputs, and an estimated MRI.
+- Five-day **ward heat-risk** forecasts.
+- Risk-level public advisories and heat-action guidance.
+- SMS/WhatsApp and browser-push alert workflows, with SQLite delivery records.
+- Census-based ward population projection using the available census inputs.
+
+**Forecast output:** The five-day view shows ward heat-risk scores; the MRI is a deterministic, estimated risk index.
+
+## Technology stack
+
+- **Frontend:** React, TypeScript, TanStack Start, Vite
+- **Backend:** Python, FastAPI, Pydantic, Uvicorn
+- **GIS:** React-Leaflet, Leaflet, GeoJSON, OpenStreetMap
+- **Weather:** Open-Meteo API
+- **Database:** SQLite
+- **Alerts:** Twilio REST API and Firebase Cloud Messaging
+
+
+## Architecture at a glance
+
+```text
+Open-Meteo + census/ward inputs + GeoJSON
+                    |
+                    v
+          Python / FastAPI services
+     weather · heat metrics · MRI · forecast
+                    |
+                    v
+                  SQLite
+                    |
+                    v
+       React / TypeScript dashboard
+       Leaflet map + ward risk display
+                    |
+           advisories and opt-in alerts
+             /                    \
+      Twilio SMS/WhatsApp     Firebase browser push
+             \                    /
+                SQLite alert logs
+```
+
+## Run locally on Windows
+
+You need Python, [Bun](https://bun.sh/), and Git. Run the backend and frontend in **two separate PowerShell windows**.
+
+The repository root is the folder containing `app`, `db`, `requirements.txt`, and this README. If it is on your Desktop as `sih2026`, use:
 
 ```powershell
 cd "$HOME\Desktop\sih2026"
 ```
 
-Do not run the project commands from `C:\Users\Vidula` or from the frontend folder unless a step below says to. The backend commands need to run from the project root so Python can find `app` and the database stays in the right folder.
-
-### PowerShell window 1: backend and database
-
-On the **first launch**, create the Python environment and install the backend dependencies:
-
-```powershell
-cd "$HOME\Desktop\sih2026"
-py -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-if (-not (Test-Path .env)) { Copy-Item .env.example .env }
-uvicorn app.main:app --reload
-```
-
-Leave this window open while using the app. On later launches, the environment and dependencies are already set up, so start the backend with:
-
-```powershell
-cd "$HOME\Desktop\sih2026"
-.venv\Scripts\Activate.ps1
-uvicorn app.main:app --reload
-```
-
-The API creates `heatkshetra.db` in the repository root, imports the 24 ward polygons, updates population estimates, and fetches live weather. Check the API at <http://127.0.0.1:8000/docs> or its health at <http://127.0.0.1:8000/health>.
-
-### PowerShell window 2: frontend
-
-Install [Bun](https://bun.sh/) if it is not already installed. On the **first launch**, install the frontend packages and start Vite:
-
-```powershell
-cd "$HOME\Desktop\sih2026\HeatKshetra-main\Downloads\heat-aware-heartland-main\heat-aware-heartland-main"
-bun install --frozen-lockfile
-if (-not (Test-Path .env)) { Copy-Item .env.example .env }
-bun run dev
-```
-
-Leave this window open too. On later launches, run:
-
-```powershell
-cd "$HOME\Desktop\sih2026\HeatKshetra-main\Downloads\heat-aware-heartland-main\heat-aware-heartland-main"
-bun run dev
-```
-
-Open <http://127.0.0.1:8080> in your browser. If Vite prints a different port, open the URL it prints. The frontend defaults to the backend at `http://127.0.0.1:8000`; its `.env` already uses that address. To stop either server, focus its PowerShell window and press **Ctrl+C**.
-
-If PowerShell blocks virtual-environment activation, run the backend without activating it:
-
-```powershell
-cd "$HOME\Desktop\sih2026"
-.venv\Scripts\python.exe -m uvicorn app.main:app --reload
-```
-
-To seed or refresh the database without starting the API:
-
-```powershell
-python scripts/seed_wards.py
-```
-
-To apply updated census CSVs immediately without waiting for the scheduled refresh:
-
-```powershell
-.venv\Scripts\python.exe scripts\update_population.py
-```
-
-## Push changes to GitHub
-
-The project is connected to `origin` on the `main` branch. From the repository root, review the changed files and push your commit:
-
-```powershell
-cd "$HOME\Desktop\sih2026"
-git status
-git add -A
-git commit -m "Update live HeatKshetra dashboard"
-git push origin main
-```
-
-The root `.gitignore` excludes `.env`, virtual environments, local SQLite databases, and frontend build artifacts. Commit `.env.example` templates, never `.env` files or provider credentials.
-
-## Frontend and API connection map
-
-| Frontend feature | Backend endpoint / service |
-| --- | --- |
-| Ward heat map and day selector | `GET /wards/geojson?day=0..4` |
-| Five-day city forecast and highest-risk wards | `GET /forecast/city?days=5` |
-| Ward list for alert subscriptions | `GET /wards` |
-| Risk advisory and public action list | `GET /advisories/{risk_level}` and `GET /action-plan/{risk_level}` |
-| Ward MRI calculation | `GET /ward/{ward_id}/mri` |
-| Alert consent subscription | `POST /subscribe` |
-| Live Twilio alerts and recent activity | `POST /alerts/trigger` and `GET /alerts/log` |
-| One-browser Firebase push subscription and extreme-risk demo | `POST /push/subscribe` and `POST /alerts/demo-push` |
-
-The backend also exposes operational or alternate data views that are not separate dashboard screens: `GET /health`, `GET /city/mri`, `GET /forecast?ward_id=...`, and `GET /weather/{ward_id}`. `GET /wards` is used to populate the subscription form, rather than shown as its own screen.
-
-The UI controls that intentionally have no backend route are map zoom/layers, browser geolocation, location search (OpenStreetMap Nominatim), and the static explanatory content about heat exposure. The map tiles come directly from OpenStreetMap. These functions do not write or calculate backend data.
-
-## Database and alert configuration
-
-SQLite schema is in `db/schema.sql`; polygon geometry is stored as GeoJSON text, so local setup does not need PostGIS. `DATABASE_URL` can select another SQLite file. On startup, the API migrates older local databases and seeds wards only when its `wards` table is empty. The weather provider is Open-Meteo; review its [forecast API documentation](https://open-meteo.com/en/docs) and [terms](https://open-meteo.com/en/terms) before using the app commercially. Include Open-Meteo attribution as required by its [pricing and attribution terms](https://open-meteo.com/en/pricing).
-
-Configure `ADMIN_API_KEY` and the Twilio account credentials in the root `.env`: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, and `TWILIO_WHATSAPP_FROM` for the channels you use. The dashboard's **Send live heat alerts** action requires that server admin key and sends only to subscribers who explicitly consented, in wards at Orange risk or higher. The browser does not save the key; it is cleared after each send attempt. SMS and WhatsApp delivery are real external messages, so use Twilio test credentials or verified test recipients while configuring. For WhatsApp, configure the approved sender or Twilio sandbox. Do not commit `.env` or put Twilio credentials in the frontend `.env`.
-
-### Configure Firebase push (free prototype notifications)
-
-FCM is Firebase's no-cost browser push service. It sends a notification to an opted-in browser/device; it does **not** send an SMS to a phone number. Localhost is a secure context for service workers. A public HTTPS URL is required when you want to demo on another device or deploy the app.
-
-1. In the [Firebase Console](https://console.firebase.google.com/), create or select a Firebase project and add a **Web app**. Copy its web app settings. In **Project settings → Cloud Messaging → Web configuration**, generate a Web Push key pair and copy the public VAPID key. If the console asks, enable the Firebase Cloud Messaging Registration API for the project.
-2. Copy the Firebase web settings into the frontend `.env` beside `package.json` (start from `HeatKshetra-main/Downloads/heat-aware-heartland-main/heat-aware-heartland-main/.env.example`): `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`, and `VITE_FIREBASE_VAPID_KEY`. These browser configuration values and the VAPID public key are public; never put a service-account private key here.
-3. In Firebase **Project settings → Service accounts**, create/download a private key JSON. Grant its service account the **Firebase Cloud Messaging API Admin** role if it does not already have permission. Put the JSON somewhere outside this repository. In the root `.env`, set `FIREBASE_PROJECT_ID` and `GOOGLE_APPLICATION_CREDENTIALS` to the project ID and absolute path of that JSON. Keep `ADMIN_API_KEY` set as well. The backend uses this private key only to authorize FCM sends.
-4. From the repository root, install the server dependency with `.venv\Scripts\python.exe -m pip install -r requirements.txt`. Start or restart the backend and frontend after saving the `.env` values. The frontend environment variables are read at startup, so restart the Vite process after editing them.
-5. In Chrome or Edge on the same computer, open `http://127.0.0.1:8080/?risk-preview=extreme#city-actions`. This development-only preview changes the displayed risk to fake extreme data; it does not update the database or trigger city-wide alerts.
-6. In **Extreme-risk push demo**, check the consent box and click **Enable push on this browser**. Allow notifications in the browser prompt. This registers only this browser for push against its selected ward.
-7. Enter the backend `ADMIN_API_KEY` in **Server admin key**, then click **Send real demo push**. The backend sends one clearly marked demo notification to that browser and records Firebase's acceptance in recent alert activity. Keep the tab open for an in-page message; to verify background push, minimize the browser. The operating system or browser must allow notifications.
-
-For a phone demo, deploy the frontend on HTTPS and open that URL on the phone; localhost on your PC is not reachable as the phone's website. Repeat the opt-in there and send to that browser's registration. Firebase acceptance confirms that FCM accepted the message for delivery, not that a person saw it. Browser notification controls, device state, and network can still prevent display. The preview is fake, but the push is real and explicitly marked as a test. This demo panel is only shown in a development build.
-
-Firebase references: [web client setup and token registration](https://firebase.google.com/docs/cloud-messaging/web/get-started), [receiving web messages](https://firebase.google.com/docs/cloud-messaging/web/receive-messages), [sending from a trusted server](https://firebase.google.com/docs/cloud-messaging/send/v1-api), and [Firebase pricing](https://firebase.google.com/pricing).
-
-### Record a real Twilio SMS in the prototype video
-
-1. Set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_FROM_NUMBER` in the root `.env`, along with `ADMIN_API_KEY`. Keep these secrets on the backend only.
-2. In the dashboard's alert subscription form, choose **SMS**, select a ward, enter a test phone that you control, check consent, and submit. On a Twilio trial, verify the recipient in Twilio and check that SMS to India is available for your account/sender. Current trial rules restrict sends to verified recipients and may restrict custom message bodies; HeatKshetra's alert text is custom, so an upgraded account may be needed for this exact SMS.
-3. Open `http://127.0.0.1:8080/?risk-preview=extreme#city-actions`. The extreme preview is simulated in the browser and does not update live risk or broadcast an alert.
-4. In **Extreme-risk SMS demo**, enter the same opted-in phone number and the server admin key, then click **Send real demo SMS**. This route sends exactly one demo message and logs the result. Show the extreme map, click the button, and include the phone receiving the SMS in your recording. You can also show the matching `SENT` entry under **Recent alert activity**.
-
-Check Twilio's current [trial rules](https://www.twilio.com/docs/usage/trials) before recording: trial messaging has a limited free-message allowance, requires verified recipient numbers, and has custom-content restrictions. Don't include account credentials or real personal numbers in the video. The SMS is real and may appear with Twilio trial labeling; it is a demo alert, not an emergency warning.
-
-## Useful checks
+### First-time setup: backend
 
 From the repository root:
 
 ```powershell
-.venv\Scripts\python.exe -m compileall app scripts
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
+uvicorn app.main:app --reload
 ```
 
-From the frontend directory:
+The API runs at <http://127.0.0.1:8000>. Interactive API documentation is at <http://127.0.0.1:8000/docs>; health status is at <http://127.0.0.1:8000/health>.
+
+### First-time setup: frontend
+
+In the second PowerShell window:
 
 ```powershell
-bun run build
-bun run lint
+cd "$HOME\Desktop\sih2026\HeatKshetra-main\Downloads\heat-aware-heartland-main\heat-aware-heartland-main"
+bun install --frozen-lockfile
+Copy-Item .env.example .env
+bun run dev
 ```
+
+Open <http://127.0.0.1:8080>. If Vite reports a different port, use the URL shown in the terminal.
+
+### Starting it again
+
+In the backend window:
+
+```powershell
+cd "$HOME\Desktop\sih2026"
+.venv\Scripts\Activate.ps1
+uvicorn app.main:app --reload
+```
+
+In the frontend window:
+
+```powershell
+cd "$HOME\Desktop\sih2026\HeatKshetra-main\Downloads\heat-aware-heartland-main\heat-aware-heartland-main"
+bun run dev
+```
+
+Keep both terminals open while using the app. Press **Ctrl+C** in each window to stop its server. If PowerShell blocks environment activation, run the backend with:
+
+```powershell
+.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+```
+
+## Suggested judge demo
+
+1. Open the dashboard and point out the Open-Meteo source and current observation time.
+2. Select a forecast day and show how ward risk colours change on the GIS map.
+3. Select a ward and explain the estimated MRI and its vulnerability inputs.
+4. Show the advisory and heat-action guidance for that risk level.
+5. Demonstrate an opt-in alert using a test phone or browser. Show the actual message/notification and the resulting alert-log entry when provider credentials are configured.
+6. Explain that the current prototype covers Mumbai and that the data-driven approach is designed for expansion to other Indian cities and states.
+
+For a visual walkthrough of the extreme-risk UI, append `?risk-preview=extreme#city-actions` to the frontend URL. This preview changes displayed example risk only; it does not update the database or send an alert. To show real delivery, use the demo-send action with a test recipient and configured provider credentials. Label any preview data as a demonstration.
+
+## Alert setup for a live demo
+
+A normal local dashboard run does not require Twilio or Firebase credentials. Live message delivery does.
+
+### Twilio SMS/WhatsApp
+
+Set these values in the **repository-root** `.env`:
+
+```dotenv
+ADMIN_API_KEY=choose-a-local-secret
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_FROM_NUMBER=
+TWILIO_WHATSAPP_FROM=
+```
+
+Use valid credentials and a test recipient you control. Trial accounts may require verified recipients. Do not put Twilio secrets in the frontend `.env` or commit either `.env` file.
+
+### Firebase browser push (optional)
+
+Configure the Firebase web-app values in the frontend `.env` using its `.env.example`. Configure `FIREBASE_PROJECT_ID` and `GOOGLE_APPLICATION_CREDENTIALS` in the repository-root `.env` with a service-account key stored outside the repository. See the [Firebase web push setup](https://firebase.google.com/docs/cloud-messaging/web/get-started).
+
+## Data and attribution
+
+- **Weather:** Open-Meteo. Current conditions and forecasts are weather-model estimates, not ward-level sensor measurements. Refresh interval defaults to 30 minutes.
+- **Ward geometry:** `app/data/MUMBAI.geojson`, sourced from [datta07/INDIAN-SHAPEFILES](https://github.com/datta07/INDIAN-SHAPEFILES).
+- **Population:** `app/data/ward_population_census.csv` and `app/data/greater_mumbai_census_totals.csv`. The projection uses the latest two city census totals available in these files.
+- **Vulnerability:** `app/data/wards_demographics.csv`. Bundled profiles are prototype inputs and can be replaced with validated official ward-level data for wider deployment.
+- **Map tiles:** OpenStreetMap contributors. The app displays map attribution in the map.
+
+When new official census data becomes available, add ward-level rows and the corresponding Greater Mumbai total to the CSVs. The population refresh re-reads the files on its scheduled cycle (30 minutes by default) or when the API is restarted.
+
+## API routes used by the dashboard
+
+| Route | Purpose |
+| --- | --- |
+| `GET /wards/geojson?day=0..4` | Ward boundaries and map risk values |
+| `GET /forecast/city?days=5` | City and ward forecast summary |
+| `GET /ward/{ward_id}/mri` | Ward MRI and risk details |
+| `GET /advisories/{risk_level}` | Public advisory text |
+| `GET /action-plan/{risk_level}` | Risk-level action guidance |
+| `POST /subscribe` | SMS/WhatsApp opt-in |
+| `POST /alerts/trigger` | Admin-authorized regional alert |
+| `POST /alerts/demo-sms` | One-recipient SMS demonstration |
+| `POST /push/subscribe` | Browser-push opt-in |
+| `POST /alerts/demo-push` | One-browser push demonstration |
+| `GET /alerts/log` | Recent alert delivery activity |
+
+## Project structure
+
+```text
+sih2026/
+├── app/                         # FastAPI backend and risk calculations
+├── app/data/                    # Ward, census, and vulnerability inputs
+├── db/schema.sql                # SQLite schema
+├── scripts/                     # Ward seed and population refresh scripts
+├── tests/                       # Backend tests
+└── HeatKshetra-main/Downloads/
+    └── heat-aware-heartland-main/heat-aware-heartland-main/
+        └── src/                 # React + TypeScript frontend
+```
+
+## Keep credentials private
+
+The root and frontend `.env` files are local configuration and are excluded from Git. Commit changes to `.env.example` only when documenting new variable names; never commit API tokens, service-account JSON, or personal phone numbers.
