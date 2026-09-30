@@ -214,6 +214,3 @@ sih2026/
         └── src/                 # React + TypeScript frontend
 ```
 
-## Keep credentials private
-
-The root and frontend `.env` files are local configuration and are excluded from Git. Commit changes to `.env.example` only when documenting new variable names; never commit API tokens, service-account JSON, or personal phone numbers.
